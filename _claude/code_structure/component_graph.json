@@ -1,0 +1,10 @@
+{
+  "components": {
+    "Component1": {
+      "description": "Component description",
+      "files": ["path/to/file1.js", "path/to/file2.js"],
+      "dependencies": ["Component2"],
+      "functions": ["function1", "function2"]
+    }
+  }
+}

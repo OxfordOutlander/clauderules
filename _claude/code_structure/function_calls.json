@@ -1,0 +1,14 @@
+{
+  "exampleFunction": {
+    "defined_in": "path/to/file.js:25",
+    "calls": [
+      "helperFunction1",
+      "helperFunction2"
+    ],
+    "called_by": ["parentFunction"],
+    "parameters": {
+      "param1": "Type"
+    },
+    "returns": "ReturnType"
+  }
+}

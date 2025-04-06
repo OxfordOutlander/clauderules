@@ -1,0 +1,7 @@
+{
+  "module1": {
+    "imports": ["dependency1", "dependency2"],
+    "exports": ["exportedFunction1", "exportedFunction2"],
+    "dependencies": ["module2"]
+  }
+}
