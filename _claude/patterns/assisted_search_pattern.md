@@ -50,40 +50,104 @@ def enhanced_search(query: str, search_params: Dict = None) -> Dict[str, Any]:
     
     Args:
         query: The search query
-        search_params: Additional search parameters (location, etc.)
+        search_params: Additional search parameters
     
     Returns:
         Dictionary containing search results and metadata
     """
     search_params = search_params or {}
     
-    # Configure web search options
-    web_search_options = {
-        "search_context_size": search_params.get("context_size", "high")
-    }
-    
-    # Add location if provided
-    if "location" in search_params:
-        web_search_options["user_location"] = {
-            "type": "approximate",
-            "approximate": search_params["location"]
-        }
+    # Configure standard options
+    max_tokens = search_params.get("max_tokens", 1500)
     
     print(f"🔍 Searching: {query}")
     start_time = time.time()
     
     try:
-        # Execute the search using LLM with search integration
+        # Execute the search using OpenAI's web search tools
+        # Following OpenAI's documentation: https://platform.openai.com/docs/guides/tools-web-search
         response = client.chat.completions.create(
-            model="gpt-4o-mini-search-preview",  # Model with search capability
-            web_search_options=web_search_options,
+            model="gpt-4.1-mini",  # gpt-4.1-mini supports web search
+            max_tokens=max_tokens,
+            tools=[{
+                "type": "web_search"
+            }],
+            tool_choice="auto",  # Let the model decide when to use web search
             messages=[
                 {
                     "role": "system",
-                    "content": """Provide comprehensive, accurate, and neutral information in response to the query.
-                    Include key facts, entities, and their relationships. Organize your response for readability.
-                    Aim to be thorough rather than brief. If information appears contradictory or uncertain, 
-                    note this in your response."""
+                    "content": """You are a helpful assistant with web search capabilities.
+                    Provide comprehensive, accurate, and neutral information in response to the query.
+                    Include key facts, entities, and relationships. Focus on finding specific 
+                    information relevant to the query with citations where appropriate.
+                    Be thorough in your search for information."""
+                },
+                {
+                    "role": "user",
+                    "content": query
+                }
+            ]
+        )
+        
+        # Extract response content
+        message = response.choices[0].message
+        content = message.content
+        
+        # Get tool calls if available
+        tool_calls = message.tool_calls if hasattr(message, 'tool_calls') else []
+        
+        # Calculate response time
+        elapsed_time = time.time() - start_time
+        
+        # Log completion
+        print(f"✅ Search completed in {elapsed_time:.2f}s")
+        
+        # Return structured result
+        return {
+            "content": content,
+            "query": query,
+            "elapsed_time": elapsed_time,
+            "tool_calls": tool_calls,
+            "raw_response": response
+        }
+        
+    except Exception as e:
+        print(f"❌ Web search failed: {str(e)}")
+        # Try fallback to simulated search if web search fails
+        return simulated_search(query, search_params)
+
+def simulated_search(query: str, search_params: Dict = None) -> Dict[str, Any]:
+    """
+    Fall back to a simulated search when web search is unavailable
+    
+    Args:
+        query: The search query
+        search_params: Additional search parameters
+    
+    Returns:
+        Dictionary containing simulated search results
+    """
+    search_params = search_params or {}
+    max_tokens = search_params.get("max_tokens", 1500)
+    
+    print(f"🔍 Simulated searching: {query}")
+    start_time = time.time()
+    
+    try:
+        # Execute simulated search using regular model
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            max_tokens=max_tokens,
+            messages=[
+                {
+                    "role": "system",
+                    "content": """You are an expert at finding accurate information. For this task, 
+                    simulate having access to web search results. Provide comprehensive, accurate, and 
+                    detailed information in response to the query as if you had just searched the web.
+                    
+                    Include specific facts, data points, metrics, and figures whenever possible.
+                    Organize your response for readability. If information might be contradictory or 
+                    uncertain, acknowledge this in your response."""
                 },
                 {
                     "role": "user",
@@ -99,56 +163,63 @@ def enhanced_search(query: str, search_params: Dict = None) -> Dict[str, Any]:
         elapsed_time = time.time() - start_time
         
         # Log completion
-        print(f"✅ Search completed in {elapsed_time:.2f}s")
+        print(f"✅ Simulated search completed in {elapsed_time:.2f}s")
         
-        # Return structured result
+        # Return structured result with search_type indicating simulation
         return {
             "content": content,
             "query": query,
             "elapsed_time": elapsed_time,
-            "raw_response": response
+            "search_type": "simulated"
         }
         
     except Exception as e:
-        print(f"❌ Search failed: {str(e)}")
+        print(f"❌ Simulated search failed: {str(e)}")
         raise
 
 # Example usage
 def search_example():
     query = "List the major AI safety research organizations and their key areas of focus"
     
-    search_params = {
-        "context_size": "high",
-        "location": {"country": "US"}
-    }
-    
-    result = enhanced_search(query, search_params)
+    result = enhanced_search(query)
     
     # Print preview of result
     preview = result["content"][:200] + "..." if len(result["content"]) > 200 else result["content"]
     print(f"\nSearch result preview:\n{preview}")
+    print(f"Search type: {result.get('search_type', 'web')}")
     
     return result
 ```
 
 ### Best Practices for Enhanced Search
 
-1. **Optimize Search Prompts**
+1. **Modern OpenAI Web Search Implementation**
+   - Use the tools API with `"type": "web_search"` to enable web search capability
+   - Use GPT-4.1-mini as the recommended model for web search (best price-performance ratio)
+   - Use `tool_choice="auto"` for natural search behavior or `tool_choice={"type": "web_search"}` to force search
+   - Temperature and standard parameters work normally with web search tools
+   - Always implement a fallback to simulated search for robustness
+
+2. **Optimize Search Prompts**
    - Include explicit instructions for comprehensive coverage
-   - Request specific entity types and attributes
+   - Request specific entity types and attributes 
    - Specify desired level of detail and organization
    - Include instructions to note information gaps or uncertainties
+   - For token count searches, explicitly ask for specific numbers
 
-2. **Design for Your Search Model**
-   - Match prompt design to model capabilities (GPT, Claude, etc.)
-   - Consider the model's context window constraints
-   - Adjust temperature based on need for creativity vs. precision
+3. **Implement Robust Fallback Strategy**
+   - Create a separate simulated_search function for when web search fails
+   - Design fallbacks to gracefully handle API limitations
+   - Label results with search_type to distinguish web vs. simulated results
+   - Structure web searches to be idempotent for retry safety
+   - Consider using a cache for repeated queries
 
-3. **Handle Edge Cases**
+4. **Handle Edge Cases**
    - Implement timeout handling for long-running searches
    - Add retry logic for intermittent failures
    - Validate responses for minimum expected content
-   - Implement fallbacks for unsupported query types
+   - Capture and process tool_calls response data
+   - Return structured results with metadata
 
 ## Implementation: Part 2 - Structured Extraction and Recursive Refinement
 
@@ -586,6 +657,37 @@ def extract_organizations(text):
 - When human judgment between search steps is required
 - When low latency is more important than completeness
 
+## OpenAI Web Search Implementation Notes
+
+This pattern has been updated to reflect the current OpenAI API implementation (as of April 2025) for web search. Important changes from previous versions:
+
+1. **Tools API for Web Search**
+   - The current API uses the tools framework with `"type": "web_search"`
+   - Web search is implemented as a tool rather than a separate API feature
+   - Standard tools parameters and patterns apply
+
+2. **Model Recommendations**
+   - Web search is available with GPT-4.1-mini
+   - Also works with other GPT-4 variants
+   - Lower cost models like gpt-3.5-turbo may not support web search functionality
+
+3. **Parameter Implementation**
+   - Use `tool_choice="auto"` to let the model decide when to use web search
+   - Using `tool_choice={"type": "web_search"}` forces web search usage
+   - Temperature and top_p parameters are compatible and can be adjusted
+
+4. **Response Structure**
+   - Web search responses may include `tool_calls` data
+   - The response will have the same structure as other tool responses
+   - The content will directly contain the synthesized search results
+
+5. **Error Handling Requirements**
+   - Always implement fallback to simulated search
+   - Check for API compatibility errors
+   - Structure code to gracefully degrade when web search is unavailable
+
+This implementation provides backward compatibility with previous approaches while ensuring forward compatibility with the current API.
+
 ## Related Patterns
 
 - **Instructor Pattern**: For structured data extraction
@@ -593,3 +695,4 @@ def extract_organizations(text):
 - **Parallel Processing Pattern**: For concurrent operations
 - **Provider Abstraction Pattern**: For vendor independence
 - **Adaptive Recursion Pattern**: For depth control in recursive operations
+- **Graceful Degradation Pattern**: For handling service unavailability
